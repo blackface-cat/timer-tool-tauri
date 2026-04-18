@@ -13,28 +13,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Node.js 20
+      - name: Install Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
 
-      - name: Install Rust
+      - name: Install Rust stable
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          source ~/.cargo/env
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          source ~/.cargo/env || true
 
-      - name: Build (Intel native)
+      - name: Install dependencies
         run: |
-          source ~/.cargo/env
-          npm ci
-          npx tauri build
+          source ~/.cargo/env || true
+          npm install
 
-      - name: Upload Intel artifact
+      - name: Build (Intel)
+        run: |
+          source ~/.cargo/env || true
+          npx tauri build --bundles dmg
+
+      - name: Upload Intel DMG
         uses: actions/upload-artifact@v4
         with:
           name: timer-intel
           path: src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 1
 
   # ── Apple Silicon (aarch64) on macOS 14 ──────────────────────
   build-arm:
@@ -43,30 +47,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Node.js 20
+      - name: Install Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
 
-      - name: Install Rust
+      - name: Install Rust stable
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-          source ~/.cargo/env
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          source ~/.cargo/env || true
 
-      - name: Build (ARM native)
+      - name: Install dependencies
         run: |
-          source ~/.cargo/env
-          npm ci
-          npx tauri build
+          source ~/.cargo/env || true
+          npm install
 
-      - name: Upload ARM artifact
+      - name: Build (ARM)
+        run: |
+          source ~/.cargo/env || true
+          npx tauri build --bundles dmg
+
+      - name: Upload ARM DMG
         uses: actions/upload-artifact@v4
         with:
           name: timer-arm
           path: src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 1
 
-  # ── Package both into a Universal DMG ─────────────────────────
+  # ── Package Universal DMG ────────────────────────────────────
   package-universal:
     needs: [build-intel, build-arm]
     runs-on: macos-14
@@ -76,58 +84,74 @@ jobs:
         with:
           path: artifacts
 
-      - name: List files
-        run: ls -laR artifacts/
+      - name: List downloaded files
+        run: |
+          echo "=== Intel ===" && ls -laR artifacts/timer-intel/
+          echo "=== ARM ===" && ls -laR artifacts/timer-arm/
 
       - name: Build Universal DMG
         run: |
           set -e
-          cd artifacts
+          INTEL_DMG=$(find artifacts/timer-intel -name "*.dmg" | head -1)
+          ARM_DMG=$(find artifacts/timer-arm -name "*.dmg" | head -1)
 
-          INTEL_DMG=$(find timer-intel -name "*.dmg" | head -1)
-          ARM_DMG=$(find timer-arm -name "*.dmg" | head -1)
+          echo "Intel DMG: $INTEL_DMG"
+          echo "ARM DMG:   $ARM_DMG"
 
-          echo "Intel: $INTEL_DMG"
-          echo "ARM:   $ARM_DMG"
+          if [ -z "$INTEL_DMG" ] || [ -z "$ARM_DMG" ]; then
+            echo "ERROR: DMG files not found!"
+            exit 1
+          fi
 
-          # Mount both dmg files to extract .app bundles
+          # Mount DMGs to extract .app bundles
           INTEL_MNT=$(mktemp -d)
           ARM_MNT=$(mktemp -d)
 
-          hdiutil attach "$INTEL_DMG" -mountpoint "$INTEL_MNT" -nobrowse
-          hdiutil attach "$ARM_DMG"   -mountpoint "$ARM_MNT"   -nobrowse
+          hdiutil attach "$INTEL_DMG" -mountpoint "$INTEL_MNT" -nobrowse -quiet
+          hdiutil attach "$ARM_DMG"   -mountpoint "$ARM_MNT"   -nobrowse -quiet
 
           INTEL_APP=$(ls "$INTEL_MNT"/*.app)
           ARM_APP=$(ls "$ARM_MNT"/*.app)
           APP_NAME=$(basename "$ARM_APP" .app)
-          TEMP_DMG=$(mktemp /tmp/XXXXXX.dmg)
-          FINAL_DMG=$(mktemp /tmp/XXXXXX.dmg)
 
-          # Copy ARM app as base (universal)
+          echo "App name: $APP_NAME"
+          echo "Intel app: $INTEL_APP"
+          echo "ARM app:   $ARM_APP"
+
+          # Copy ARM app as base, then lipo the Intel binary into it
+          rm -rf "/tmp/${APP_NAME}.app"
           cp -r "$ARM_APP" "/tmp/${APP_NAME}.app"
 
-          # Lipo: embed x64 binary into the arm64 .app
           ARM_BINARY=$(find "/tmp/${APP_NAME}.app/Contents/MacOS" -type f | head -1)
           INTEL_BINARY=$(find "$INTEL_APP/Contents/MacOS" -type f | head -1)
-          INTEL_NAME=$(basename "$INTEL_BINARY")
+          BINARY_NAME=$(basename "$INTEL_BINARY")
 
-          echo "Lipo: $INTEL_NAME into universal..."
-          lipo "$ARM_BINARY" "$INTEL_BINARY" -output "/tmp/${APP_NAME}.app/Contents/MacOS/$INTEL_NAME" -create
+          echo "Lipo $BINARY_NAME (arm64 + x64)..."
+          lipo "$ARM_BINARY" "$INTEL_BINARY" \
+            -output "/tmp/${APP_NAME}.app/Contents/MacOS/$BINARY_NAME" \
+            -create
 
-          echo "Creating DMG..."
-          hdiutil create "$TEMP_DMG" -size 500m -fs HFS+ -volname "$APP_NAME" -quiet
+          # Create final DMG
+          TEMP_DMG=$(mktemp /tmp/build_XXXXXX.dmg)
+          FINAL_DMG=$(mktemp /tmp/final_XXXXXX.dmg)
+
+          hdiutil create "$TEMP_DMG" -size 400m -fs HFS+ \
+            -volname "$APP_NAME" -quiet
           hdiutil attach "$TEMP_DMG" -mountpoint /tmp/dmg_mnt -quiet
           cp -r "/tmp/${APP_NAME}.app" /tmp/dmg_mnt/
           hdiutil detach /tmp/dmg_mnt -quiet
           hdiutil convert "$TEMP_DMG" -format UDZO -o "$FINAL_DMG" -quiet
 
           mkdir -p "$GITHUB_WORKSPACE/output"
-          mv "$FINAL_DMG" "$GITHUB_WORKSPACE/output/计时器_通用版_v1.2.8.dmg"
+          mv "$FINAL_DMG" "$GITHUB_WORKSPACE/output/计时器_通用版.dmg"
+          echo "Success: $GITHUB_WORKSPACE/output/计时器_通用版.dmg"
 
-          echo "Done: output/计时器_通用版_v1.2.8.dmg"
+          hdiutil detach "$INTEL_MNT" -quiet 2>/dev/null || true
+          hdiutil detach "$ARM_MNT" -quiet 2>/dev/null || true
 
-      - name: Upload final DMG
+      - name: Upload Universal DMG
         uses: actions/upload-artifact@v4
         with:
           name: timer-universal-dmg
           path: output/*.dmg
+          retention-days: 1
