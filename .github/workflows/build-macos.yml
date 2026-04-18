@@ -18,24 +18,23 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: package-lock.json
 
-      - name: Install Rust (Intel target)
+      - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           source ~/.cargo/env
-          rustup target add x86_64-apple-darwin
 
-      - name: Install dependencies and build
+      - name: Build (Intel native)
         run: |
+          source ~/.cargo/env
           npm ci
-          npx tauri build --target x86_64-apple-darwin
+          npx tauri build
 
       - name: Upload Intel artifact
         uses: actions/upload-artifact@v4
         with:
           name: timer-intel
-          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
 
   # ── Apple Silicon (aarch64) on macOS 14 ──────────────────────
   build-arm:
@@ -49,24 +48,23 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: package-lock.json
 
-      - name: Install Rust (ARM target)
+      - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           source ~/.cargo/env
-          rustup target add aarch64-apple-darwin
 
-      - name: Install dependencies and build
+      - name: Build (ARM native)
         run: |
+          source ~/.cargo/env
           npm ci
-          npx tauri build --target aarch64-apple-darwin
+          npx tauri build
 
       - name: Upload ARM artifact
         uses: actions/upload-artifact@v4
         with:
           name: timer-arm
-          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
 
   # ── Package both into a Universal DMG ─────────────────────────
   package-universal:
