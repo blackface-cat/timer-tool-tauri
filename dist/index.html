@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>计时器</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif}
+:root{
+  --bg:#f0f2f5;--surface:#fff;--primary:#3b82f6;--primary-h:#2563eb;
+  --text:#1f2937;--text2:#6b7280;--border:#e5e7eb;--danger:#ef4444;
+  --accent:#f59e0b;--hover:#f3f4f6;--shadow:0 2px 12px rgba(0,0,0,.10), 0 1px 3px rgba(0,0,0,.06)
+}
+[data-theme=dark]{
+  --bg:#1a1a2e;--surface:#16213e;--primary:#3b82f6;--text:#f1f5f9;
+  --text2:#94a3b8;--border:#334155;--hover:#1e293b;--shadow:0 2px 12px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.25)
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);display:flex;flex-direction:column}
+
+/* 标题栏 */
+.titlebar{height:36px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;
+  -webkit-app-region:drag;user-select:none;flex-shrink:0}
+.titlebar-title{padding-left:12px;font-size:13px;font-weight:500;color:var(--text)}
+.titlebar-btns{display:flex;-webkit-app-region:no-drag}
+.titlebar-btn{width:46px;height:36px;border:none;background:transparent;
+  color:var(--text);font-size:14px;cursor:pointer;transition:background .15s}
+.titlebar-btn:hover{background:var(--hover)}
+.titlebar-btn.close:hover{background:var(--danger);color:#fff}
+
+/* 主布局 */
+.main{flex:1;overflow:hidden;display:flex;flex-direction:column;padding:12px;gap:10px}
+
+/* 计时器区 */
+.timer-card{background:var(--surface);border-radius:10px;padding:16px;
+  box-shadow:var(--shadow);text-align:center;border:1px solid var(--border)}
+.clock{font-size:48px;font-weight:700;letter-spacing:2px;color:var(--text);
+  font-variant-numeric:tabular-nums}
+.date{font-size:11px;color:var(--text2);margin-top:2px}
+.ctrl-row{display:flex;justify-content:center;gap:6px;margin-top:12px}
+.btn{padding:6px 16px;border:none;border-radius:6px;cursor:pointer;font-size:13px;
+  font-weight:500;transition:all .15s}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-h)}
+.btn-primary:disabled{opacity:.45;cursor:not-allowed}
+.btn-secondary{background:var(--hover);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:var(--border)}
+.btn-accent{background:var(--accent);color:#fff}
+.btn-accent:hover{background:#d97706}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* 面板 */
+.panel{background:var(--surface);border-radius:10px;flex:1;overflow:hidden;
+  display:flex;flex-direction:column;box-shadow:var(--shadow);border:1px solid var(--border)}
+.panel-head{display:flex;align-items:center;justify-content:space-between;
+  padding:8px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.panel-title{font-size:12px;font-weight:600;color:var(--text2)}
+.panel-body{flex:1;overflow-y:auto;padding:8px}
+
+/* 时间点列表 */
+.track-list{display:flex;flex-direction:column;gap:3px}
+.track-item{display:flex;align-items:center;gap:4px;padding:5px 6px;
+  border-radius:5px;transition:background .1s}
+.track-item:hover{background:var(--hover)}
+.track-name{flex:1;font-size:12px}
+.track-dot{width:6px;height:6px;border-radius:50%;background:var(--primary);flex-shrink:0}
+.track-btn{padding:2px 6px;font-size:11px;border:none;border-radius:4px;
+  cursor:pointer;background:var(--hover);color:var(--text);transition:background .1s}
+.track-btn:hover{background:var(--border)}
+.track-btn.rec{background:var(--primary);color:#fff}
+.track-btn.rec:hover{background:var(--primary-h)}
+.track-btn.del{color:var(--danger)}
+.track-empty{color:var(--text2);font-size:11px;text-align:center;padding:16px 0}
+
+/* 记录列表 */
+.lap-item{display:flex;justify-content:space-between;align-items:center;
+  padding:4px 8px;border-radius:5px;gap:4px}
+.lap-item:nth-child(odd){background:rgba(59,130,246,.04)}
+.lap-item:hover{background:var(--hover)}
+.lap-item.lap-deleted{opacity:.5;text-decoration:line-through}
+.lap-name{font-size:13px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lap-time{font-size:13px;color:var(--text2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.lap-btn{padding:2px 6px;font-size:11px;border:none;border-radius:4px;
+  cursor:pointer;background:transparent;transition:background .1s;line-height:1}
+.lap-edit{color:var(--text2)}
+.lap-edit:hover{color:var(--primary);background:rgba(59,130,246,.1)}
+.lap-del{color:var(--danger)}
+.lap-del:hover{background:rgba(239,68,68,.1)}
+.lap-restore{color:var(--primary)}
+.lap-restore:hover{background:rgba(59,130,246,.1)}
+.lap-divider{font-size:10px;color:var(--text2);padding:6px 8px 2px;
+  border-top:1px dashed var(--border);margin-top:4px;text-align:center}
+.empty-hint{color:var(--text2);font-size:11px;text-align:center;padding:16px 0}
+
+/* 组选择器 */
+.group-bar{display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg);
+  border-radius:6px;margin-bottom:6px;flex-wrap:wrap}
+.group-label{font-size:11px;color:var(--text2);white-space:nowrap}
+.group-chip{padding:3px 10px;border-radius:12px;font-size:11px;cursor:pointer;
+  border:1px solid var(--border);background:var(--surface);transition:all .15s;
+  display:inline-flex;align-items:center;gap:3px;max-width:160px;white-space:nowrap}
+.group-chip:hover{border-color:var(--primary)}
+.group-chip.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.group-chip-add{background:var(--accent);color:#fff;border-color:var(--accent)}
+.group-chip-add:hover{background:#d97706;border-color:#d97706}
+.group-chip-del{color:var(--danger);border-color:var(--danger);padding:3px 6px}
+.group-chip-del:hover{background:rgba(239,68,68,.1)}
+.group-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px}
+
+/* 备注 */
+.note-area{width:100%;min-height:50px;resize:none;border:1px solid var(--border);
+  border-radius:6px;padding:6px;font-size:12px;background:var(--bg);color:var(--text);
+  font-family:inherit;outline:none}
+.note-area:focus{border-color:var(--primary)}
+
+/* 底部设置栏 */
+.settings-bar{background:var(--surface);border-radius:8px;padding:8px 12px;
+  display:flex;align-items:center;justify-content:center;gap:20px;flex-shrink:0;
+  border:1px solid var(--border);box-shadow:var(--shadow)}
+.setting-item{display:flex;align-items:center;gap:6px}
+.setting-label{font-size:11px;color:var(--text2)}
+.toggle{position:relative;width:32px;height:18px}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:var(--border);border-radius:9px;
+  cursor:pointer;transition:.2s}
+.toggle-slider:before{content:'';position:absolute;left:2px;top:2px;
+  width:14px;height:14px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked+.toggle-slider{background:var(--primary)}
+.toggle input:checked+.toggle-slider:before{transform:translateX(14px)}
+
+/* Toast */
+#toast{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);
+  background:#1f2937;color:#fff;padding:6px 16px;border-radius:16px;font-size:12px;
+  z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none}
+#toast.show{opacity:1}
+
+/* 滚动条 */
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* 模态框 */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;
+  align-items:center;justify-content:center;z-index:1000;opacity:0;pointer-events:none;
+  transition:opacity .2s}
+.modal-overlay.show{opacity:1;pointer-events:all}
+.modal-box{background:var(--surface);border-radius:10px;padding:20px;min-width:260px;
+  max-width:380px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.modal-title{font-size:14px;font-weight:600;margin-bottom:10px}
+.modal-body{color:var(--text2);font-size:13px;margin-bottom:16px}
+.modal-body input{width:100%;padding:6px 10px;border:1px solid var(--border);
+  border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;outline:none}
+.modal-body input:focus{border-color:var(--primary)}
+.modal-foot{display:flex;justify-content:flex-end;gap:6px}
+</style>
+</head>
+<body>
+
+<!-- 标题栏 -->
+<div class="titlebar">
+  <span class="titlebar-title">计时器</span>
+  <div class="titlebar-btns">
+    <button class="titlebar-btn" id="btn-min" title="最小化">&#x2014;</button>
+    <button class="titlebar-btn" id="btn-max" title="最大化">&#x25A1;</button>
+    <button class="titlebar-btn close" id="btn-close" title="关闭">&#x2715;</button>
+  </div>
+</div>
+
+<!-- 主内容 -->
+<div class="main">
+
+  <!-- 计时器卡片 -->
+  <div class="timer-card">
+    <div class="clock" id="clock">00:00:00</div>
+    <div class="date" id="date"></div>
+    <div class="ctrl-row">
+      <button class="btn btn-primary" id="btn-start">开始</button>
+      <button class="btn btn-secondary" id="btn-pause" disabled>暂停</button>
+      <button class="btn btn-secondary" id="btn-reset">重置</button>
+      <button class="btn btn-accent" id="btn-lap">记次</button>
+    </div>
+  </div>
+
+  <!-- 时间点 + 记录 横向布局 -->
+  <div style="display:flex;flex:1;gap:10px;min-height:0;align-items:stretch">
+
+    <!-- 左侧：时间点（固定宽度） -->
+    <div class="panel" style="flex:0 0 160px;min-width:0">
+      <div class="panel-head">
+        <span class="panel-title">时间点</span>
+        <button class="btn btn-sm btn-secondary" id="btn-add-track">+ 添加</button>
+      </div>
+      <div class="panel-body">
+        <div class="track-list" id="track-list">
+          <div class="empty-hint">点击「+ 添加」创建时间点</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧：记录（纵向延伸）+ 底部（备注+设置+版本） -->
+    <div style="flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;min-height:0">
+
+      <!-- 记录列表（纵向撑满） -->
+      <div class="panel" style="flex:1;min-height:0">
+        <div class="panel-head">
+          <span class="panel-title">记录</span>
+          <button class="btn btn-sm btn-secondary" id="btn-export-lap">导出</button>
+        </div>
+        <div class="panel-body">
+          <div class="group-bar" id="group-bar">
+            <span class="group-label">组:</span>
+            <div id="group-list"></div>
+            <button class="group-chip group-chip-add" id="btn-new-group">+ 新建</button>
+          </div>
+          <div id="lap-list">
+            <div class="empty-hint">暂无记录</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部：备注 + 设置 + 版本号 -->
+      <div style="display:flex;gap:10px;align-items:stretch;flex-shrink:0;height:110px">
+
+        <!-- 备注区 -->
+        <div class="panel" style="flex:1">
+          <div class="panel-head">
+            <span class="panel-title">备注</span>
+            <button class="btn btn-sm btn-secondary" id="btn-save-note">保存</button>
+          </div>
+          <div class="panel-body">
+            <textarea class="note-area" id="note-input" placeholder="输入备注..." style="height:50px;min-height:0"></textarea>
+          </div>
+        </div>
+
+        <!-- 设置区 -->
+        <div style="display:flex;flex-direction:column;gap:8px;width:200px;flex-shrink:0">
+          <div class="panel" style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:10px 14px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-sm btn-secondary" id="btn-help-bottom" style="font-size:12px">📖 使用说明</button>
+              <div class="setting-item">
+                <span class="setting-label">深色主题</span>
+                <label class="toggle"><input type="checkbox" id="sw-theme"><span class="toggle-slider"></span></label>
+              </div>
+            </div>
+          </div>
+          <div style="text-align:right;padding-right:4px">
+            <span style="font-size:11px;color:var(--text2);opacity:.6">v1.2.8</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- 模态框 -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-title" id="modal-title">提示</div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<script type="module">
+const { invoke } = window.__TAURI__?.core || window.__TAURI__;
+
+// ── 状态 ──────────────────────────────────────────
+const S = {
+  isRunning: false, elapsed: 0, baseTime: 0, rafId: null, startTs: null,
+  trackNames: [], lapRecords: [], recordGroups: [],
+  settings: { autoStart: false, trayOnClose: true, theme: 'light' },
+  currentGroupId: null,
+};
+
+// ── 工具 ──────────────────────────────────────────
+const fmt = ms => { const s = Math.floor(ms / 1000); return `${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}`; };
+const pad = n => String(n).padStart(2,'0');
+const fmtDate = d => {
+  d = d || new Date();
+  return `${d.getMonth()+1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const fmtFull = d => {
+  d = d || new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const qs = s => document.querySelector(s);
+const $on = (el, ev, fn) => el.addEventListener(ev, fn);
+
+// ── Toast ──────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const t = qs('#toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ── 数据 ──────────────────────────────────────────
+async function loadData() {
+  try {
+    const d = await invoke('load_data');
+    S.trackNames    = d.track_names    || [];
+    S.lapRecords    = d.lap_records    || [];
+    S.recordGroups  = d.record_groups  || [];
+    S.settings      = { ...S.settings, ...(d.settings||{}) };
+    if (!S.currentGroupId && S.recordGroups.length) S.currentGroupId = S.recordGroups[0].id;
+    if (!S.currentGroupId) newGroup(false);
+  } catch(e) { console.error(e); newGroup(false); }
+}
+
+async function persist() {
+  try {
+    await invoke('save_data', {
+      data: {
+        track_names:    S.trackNames,
+        lap_records:    S.lapRecords,
+        record_groups:  S.recordGroups,
+        settings:       S.settings,
+      }
+    });
+  } catch(e) { console.error(e); }
+}
+
+// ── 计时器 ─────────────────────────────────────────
+function startTimer() {
+  if (S.isRunning) return;
+  S.isRunning = true; S.startTs = Date.now() - S.baseTime;
+  tick();
+  qs('#btn-start').disabled = true;
+  qs('#btn-pause').disabled = false;
+}
+function tick() {
+  S.rafId = requestAnimationFrame(() => {
+    if (!S.isRunning) return;
+    S.elapsed = Date.now() - S.startTs;
+    qs('#clock').textContent = fmt(S.elapsed);
+    tick();
+  });
+}
+function pauseTimer() {
+  if (!S.isRunning) return;
+  S.isRunning = false; S.baseTime = S.elapsed;
+  cancelAnimationFrame(S.rafId);
+  qs('#btn-start').disabled = false;
+  qs('#btn-pause').disabled = true;
+}
+function resetTimer() {
+  S.isRunning = false; S.elapsed = 0; S.baseTime = 0;
+  cancelAnimationFrame(S.rafId);
+  qs('#clock').textContent = '00:00:00';
+  qs('#btn-start').disabled = false;
+  qs('#btn-pause').disabled = true;
+}
+function lapRecord(name) {
+  if (!name) return;
+  S.lapRecords.push({ id: genId(), name, time: S.elapsed, timestamp: Date.now(), group_id: S.currentGroupId });
+  renderLapList(); persist();
+  toast(`已记录: ${name}`);
+}
+async function handleLap() {
+  const used = new Set(S.lapRecords.filter(r => r.group_id === S.currentGroupId && !r.deleted).map(r => r.name));
+  const next  = S.trackNames.find(n => !used.has(n));
+  if (next) { lapRecord(next); return; }
+  const name = await prompt('记次', `记次 ${S.lapRecords.filter(r => r.group_id === S.currentGroupId).length + 1}`);
+  if (name) lapRecord(name);
+}
+
+// ── 时间点 ─────────────────────────────────────────
+function renderTracks() {
+  const el = qs('#track-list');
+  if (!S.trackNames.length) { el.innerHTML='<div class="empty-hint">点击「+ 添加」创建时间点</div>'; return; }
+  el.innerHTML = S.trackNames.map((n,i) => `
+    <div class="track-item">
+      <div class="track-dot"></div>
+      <span class="track-name">${escHtml(n)}</span>
+      <button class="track-btn rec" data-i="${i}">记录</button>
+      <button class="track-btn" data-i="${i}" data-action="edit">✏</button>
+      <button class="track-btn del" data-i="${i}" data-action="del">×</button>
+    </div>`).join('');
+  el.querySelectorAll('button').forEach(btn => {
+    btn.onclick = () => {
+      const i = parseInt(btn.dataset.i);
+      if (!btn.dataset.action) { lapRecord(S.trackNames[i]); return; }
+      if (btn.dataset.action === 'edit') doEditTrack(i);
+      if (btn.dataset.action === 'del') doDelTrack(i);
+    };
+  });
+}
+async function doEditTrack(i) {
+  const n = await prompt('重命名', S.trackNames[i]);
+  if (n) { S.trackNames[i] = n; renderTracks(); persist(); }
+}
+async function doDelTrack(i) {
+  if (await confirm('删除', `确定删除「${S.trackNames[i]}」？`)) {
+    S.trackNames.splice(i, 1); renderTracks(); persist();
+  }
+}
+async function doAddTrack() {
+  const n = await prompt('添加时间点', '');
+  if (n) { S.trackNames.push(n); renderTracks(); persist(); }
+}
+
+// ── 记录列表 ───────────────────────────────────────
+function renderLapList() {
+  const el = qs('#lap-list');
+  const recs   = S.lapRecords.filter(r => r.group_id === S.currentGroupId && !r.deleted);
+  const delRecs= S.lapRecords.filter(r => r.group_id === S.currentGroupId && r.deleted);
+  let out = '';
+  if (!recs.length && !delRecs.length) { el.innerHTML='<div class="empty-hint">暂无记录</div>'; return; }
+  if (recs.length) {
+    out += recs.map(r => `<div class="lap-item" data-id="${r.id}">
+      <span class="lap-name">${escHtml(r.name)}</span>
+      <span class="lap-time">${fmt(r.time)}</span>
+      <div style="display:flex;gap:2px;flex-shrink:0">
+        <button class="lap-btn lap-edit" data-id="${r.id}" title="改名">✏</button>
+        <button class="lap-btn lap-del" data-id="${r.id}">✕</button>
+      </div>
+    </div>`).join('');
+  }
+  if (delRecs.length) {
+    out += `<div class="lap-divider">已删除 (${delRecs.length})</div>`;
+    out += delRecs.map(r => `<div class="lap-item lap-deleted" data-id="${r.id}">
+      <span class="lap-name">${escHtml(r.name)}</span>
+      <span class="lap-time">${fmt(r.time)}</span>
+      <button class="lap-btn lap-restore" data-id="${r.id}">↩</button>
+    </div>`).join('');
+  }
+  el.innerHTML = out;
+  el.querySelectorAll('.lap-edit').forEach(btn => btn.onclick = () => { const r = S.lapRecords.find(x=>x.id===btn.dataset.id); if(r){doRenameLap(r.id);} });
+  el.querySelectorAll('.lap-del').forEach(btn => btn.onclick = () => { const r = S.lapRecords.find(x=>x.id===btn.dataset.id); if(r){r.deleted=true;renderLapList();persist();toast('已删除');} });
+  el.querySelectorAll('.lap-restore').forEach(btn => btn.onclick = () => { const r = S.lapRecords.find(x=>x.id===btn.dataset.id); if(r){r.deleted=false;renderLapList();persist();toast('已恢复');} });
+}
+
+async function doRenameLap(id) {
+  const r = S.lapRecords.find(x => x.id === id);
+  if (!r) return;
+  const n = await prompt('改名', r.name);
+  if (n === null) return;
+  r.name = n.trim() || r.name;
+  renderLapList(); persist(); toast('已改名');
+}
+
+// ── 记录组 ─────────────────────────────────────────
+function newGroup(persistFlag = true) {
+  const g = { id: genId(), name: null, created_at: Date.now(), note: '' };
+  S.recordGroups.unshift(g);
+  S.currentGroupId = g.id;
+  if (persistFlag) { persist(); toast('已创建新组'); }
+  renderGroupList(); renderLapList();
+  qs('#note-input').value = '';
+}
+
+function selectGroup(id) {
+  S.currentGroupId = id;
+  const g = S.recordGroups.find(r => r.id === id);
+  qs('#note-input').value = g?.note || '';
+  renderGroupList(); renderLapList();
+}
+
+function renderGroupList() {
+  const el = qs('#group-list');
+  if (!S.recordGroups.length) { el.innerHTML = ''; return; }
+  el.innerHTML = S.recordGroups.slice(0, 6).map(g => {
+    const isActive = g.id === S.currentGroupId;
+    const label = g.name || fmtDate(new Date(g.created_at));
+    const delBtn = isActive && S.recordGroups.length > 1
+      ? `<button class="group-chip-del" data-action="del-group" title="删除组">🗑</button>`
+      : '';
+    return `<div class="group-chip ${isActive?'active':''}" data-id="${g.id}" title="${escAttr(label)}">
+      <span class="group-chip-name">${escHtml(label)}</span>
+      <button class="group-chip-edit" data-action="edit-group" title="重命名" style="opacity:.6;background:transparent;border:none;color:inherit;cursor:pointer;font-size:10px;padding:0 1px;line-height:1">✏</button>
+      ${delBtn}
+    </div>`;
+  }).join('');
+
+  // 点击组chip → 选中
+  el.querySelectorAll('.group-chip').forEach(chip => {
+    chip.onclick = e => {
+      if (e.target.dataset.action === 'edit-group' || e.target.dataset.action === 'del-group') return;
+      selectGroup(chip.dataset.id);
+    };
+  });
+  // 编辑组名
+  el.querySelectorAll('[data-action="edit-group"]').forEach(btn => {
+    btn.onclick = e => { e.stopPropagation(); doRenameGroup(btn.closest('.group-chip').dataset.id); };
+  });
+  // 删除组
+  el.querySelectorAll('[data-action="del-group"]').forEach(btn => {
+    btn.onclick = e => { e.stopPropagation(); doDeleteGroup(); };
+  });
+}
+
+async function doRenameGroup(id) {
+  const g = S.recordGroups.find(x => x.id === id);
+  if (!g) return;
+  const def = g.name || fmtDate(new Date(g.created_at));
+  const n = await prompt('重命名组', def);
+  if (n === null) return;
+  g.name = n.trim() || null;
+  renderGroupList(); persist(); toast('组名已更新');
+}
+
+async function doDeleteGroup() {
+  if (S.recordGroups.length <= 1) { toast('至少保留一个组'); return; }
+  const g = S.recordGroups.find(r => r.id === S.currentGroupId);
+  if (!g) return;
+  const gName = g.name || fmtDate(new Date(g.created_at));
+  if (!await confirm('删除组', `确定删除「${gName}」组？该组所有记录也会删除。`)) return;
+  const idx = S.recordGroups.findIndex(r => r.id === S.currentGroupId);
+  S.recordGroups.splice(idx, 1);
+  S.lapRecords = S.lapRecords.filter(r => r.group_id !== S.currentGroupId);
+  S.currentGroupId = S.recordGroups[0]?.id || null;
+  if (!S.currentGroupId) newGroup(true);
+  else {
+    const ng = S.recordGroups.find(r => r.id === S.currentGroupId);
+    qs('#note-input').value = ng?.note || '';
+  }
+  renderGroupList(); renderLapList(); persist(); toast('组已删除');
+}
+
+// ── 备注 ───────────────────────────────────────────
+async function saveNote() {
+  if (!S.currentGroupId) { toast('请先创建组'); return; }
+  const g = S.recordGroups.find(r => r.id === S.currentGroupId);
+  if (g) { g.note = qs('#note-input').value; persist(); }
+  toast('备注已保存');
+}
+
+// ── 导出 ───────────────────────────────────────────
+function exportLap() {
+  const recs = S.lapRecords.filter(r => r.group_id === S.currentGroupId);
+  if (!recs.length) { toast('没有记录可导出'); return; }
+  const csv = '名称,时间,时间戳\n' + recs.map(r => `${r.name},${fmt(r.time)},${fmtFull(new Date(r.timestamp))}`).join('\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `timer-${Date.now()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── 模态框 ─────────────────────────────────────────
+let modalResolve;
+function showModal(title, body, buttons) {
+  return new Promise(resolve => {
+    modalResolve = resolve;
+    qs('#modal-title').textContent = title;
+    qs('#modal-body').innerHTML = body;
+    qs('#modal-foot').innerHTML = buttons.map(b =>
+      `<button class="btn ${b.cls||'btn-secondary btn-sm'}" data-res="${b.action}">${b.text}</button>`
+    ).join('');
+    qs('#modal-foot').querySelectorAll('button').forEach(btn => {
+      btn.onclick = () => {
+        closeModal();
+        modalResolve(btn.dataset.res === 'confirm' ? (qs('#modal-body input')?.value || '') : null);
+      };
+    });
+    qs('#modal-overlay').classList.add('show');
+
+    // 回车键确认（仅当有 input 时）
+    const inp = qs('#modal-body input');
+    if (inp) {
+      inp.focus();
+      inp.addEventListener('keydown', function onEnter(e) {
+        if (e.key === 'Enter') { e.preventDefault(); closeModal(); modalResolve(inp.value || ''); }
+      });
+      // 关闭时自动清理
+      const cleanup = () => { inp.removeEventListener('keydown', onEnter); qs('#modal-overlay').removeEventListener('closeCleanup', cleanup); };
+      qs('#modal-overlay').addEventListener('closeCleanup', cleanup);
+    }
+  });
+}
+
+function closeModal() {
+  qs('#modal-overlay').classList.remove('show');
+  qs('#modal-overlay').dispatchEvent(new Event('closeCleanup'));
+}
+
+async function prompt(title, def) {
+  return showModal(title, `<input value="${escAttr(def||'')}" placeholder="输入...">`, [
+    {text:'取消',action:'cancel',cls:'btn-secondary btn-sm'},
+    {text:'确定',action:'confirm',cls:'btn-primary btn-sm'}
+  ]);
+}
+
+async function confirm(title, msg) {
+  return showModal(title, `<p>${msg}</p>`, [
+    {text:'取消',action:'cancel',cls:'btn-secondary btn-sm'},
+    {text:'确定',action:'confirm',cls:'btn-primary btn-sm'}
+  ]).then(v => v !== null);
+}
+
+// ── 工具函数 ───────────────────────────────────────
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s) { return String(s).replace(/"/g, '&quot;'); }
+
+// ── 主题 ───────────────────────────────────────────
+function applyTheme(dark) {
+  document.documentElement.dataset.theme = dark ? 'dark' : '';
+  qs('#sw-theme').checked = dark;
+}
+
+// ── 帮助 ───────────────────────────────────────────
+function showHelpText() {
+  qs('#modal-title').textContent = '使用说明';
+  qs('#modal-body').innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;font-size:12px;color:var(--text2);line-height:1.6">
+    <div><strong style="color:var(--primary)">计时器</strong><br>点击「开始」运行，支持暂停/重置/记次</div>
+    <div><strong style="color:var(--primary)">记次</strong><br>自动按时间点顺序记录，也可手动输入名称</div>
+    <div><strong style="color:var(--primary)">时间点</strong><br>左侧添加管理，点击「记录」按钮快速记次</div>
+    <div><strong style="color:var(--primary)">记录组</strong><br>新建组切换场景，每组独立记录和备注；点击组名右侧✏可重命名</div>
+    <div><strong style="color:var(--primary)">删除/恢复</strong><br>单条记录可删除或恢复，组内可删除整个组</div>
+    <div><strong style="color:var(--primary)">导出</strong><br>点击「导出」将当前组记录保存为CSV文件</div>
+    <div><strong style="color:var(--primary)">系统托盘</strong><br>关闭窗口最小化到托盘，双击图标恢复</div>
+    <div><strong style="color:var(--primary)">深色模式</strong><br>底部开关切换浅色/深色主题</div>
+  </div><div style="text-align:right;font-size:11px;color:var(--text2);margin-top:12px;opacity:.7">【黑脸阿猫制作】</div>`;
+  qs('#modal-foot').innerHTML = `<button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-overlay').classList.remove('show')">关闭</button>`;
+  qs('#modal-overlay').classList.add('show');
+}
+
+// ── 初始化 ─────────────────────────────────────────
+async function init() {
+  qs('#btn-min').onclick   = () => invoke('minimize_window');
+  qs('#btn-max').onclick   = async () => { await invoke('maximize_window'); const mx = await invoke('is_maximized'); qs('#btn-max').innerHTML = mx ? '&#x2750;' : '&#x25A1;'; };
+  qs('#btn-close').onclick = () => invoke('close_window');
+  qs('#btn-start').onclick  = startTimer;
+  qs('#btn-pause').onclick  = pauseTimer;
+  qs('#btn-reset').onclick  = resetTimer;
+  qs('#btn-lap').onclick    = handleLap;
+  qs('#btn-add-track').onclick = doAddTrack;
+  qs('#btn-export-lap').onclick = exportLap;
+  qs('#btn-new-group').onclick  = () => newGroup(true);
+  qs('#btn-save-note').onclick  = saveNote;
+  qs('#btn-help-bottom').onclick= showHelpText;
+  qs('#sw-theme').onchange  = e => { S.settings.theme = e.target.checked ? 'dark' : 'light'; applyTheme(e.target.checked); persist(); };
+
+  const updateDate = () => qs('#date').textContent = fmtFull();
+  updateDate(); setInterval(updateDate, 1000);
+
+  await loadData();
+  applyTheme(S.settings.theme === 'dark');
+  renderTracks(); renderGroupList(); renderLapList();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

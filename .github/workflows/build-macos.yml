@@ -1,0 +1,142 @@
+name: Build macOS (Intel + Apple Silicon)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  # ── Intel (x86_64) on macOS 13 ──────────────────────────────
+  build-intel:
+    runs-on: macos-13
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: timer-tool-tauri/package-lock.json
+
+      - name: Install Rust (Intel target)
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          rustup target add x86_64-apple-darwin
+
+      - name: Install dependencies
+        run: |
+          cd timer-tool-tauri
+          npm ci
+          # tauri build for intel only
+          npx tauri build --target x86_64-apple-darwin
+
+      - name: Upload Intel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: timer-intel
+          path: timer-tool-tauri/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+
+  # ── Apple Silicon (aarch64) on macOS 14 ──────────────────────
+  build-arm:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: timer-tool-tauri/package-lock.json
+
+      - name: Install Rust (ARM target)
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          rustup target add aarch64-apple-darwin
+
+      - name: Install dependencies
+        run: |
+          cd timer-tool-tauri
+          npm ci
+          # tauri build for arm64 only
+          npx tauri build --target aarch64-apple-darwin
+
+      - name: Upload ARM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: timer-arm
+          path: timer-tool-tauri/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+
+  # ── Package both into a Universal DMG ─────────────────────────
+  package-universal:
+    needs: [build-intel, build-arm]
+    runs-on: macos-14
+    steps:
+      - name: Download both builds
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List files
+        run: ls -la artifacts/
+
+      - name: Build Universal DMG
+        run: |
+          set -e
+          cd artifacts
+
+          INTEL_DMG=$(ls timer-intel/*.dmg | head -1)
+          ARM_DMG=$(ls timer-arm/*.dmg | head -1)
+
+          echo "Intel: $INTEL_DMG"
+          echo "ARM:   $ARM_DMG"
+
+          # Mount both dmg files to extract .app bundles
+          INTEL_MNT=$(mktemp -d)
+          ARM_MNT=$(mktemp -d)
+
+          hdiutil attach "$INTEL_DMG" -mountpoint "$INTEL_MNT" -nobrowse
+          hdiutil attach "$ARM_DMG"   -mountpoint "$ARM_MNT"   -nobrowse
+
+          INTEL_APP=$(ls "$INTEL_MNT"/*.app)
+          ARM_APP=$(ls "$ARM_MNT"/*.app)
+          APP_NAME=$(basename "$ARM_APP" .app)
+          TEMP_DMG=$(mktemp /tmp/XXXXXX.dmg)
+          FINAL_DMG=$(mktemp /tmp/XXXXXX.dmg)
+
+          # Copy ARM app as base (universal)
+          cp -r "$ARM_APP" "/tmp/${APP_NAME}.app"
+
+          # Lipo: embed x64 binary into the arm64 .app
+          ARM_BINARY=$(find "/tmp/${APP_NAME}.app" -name '计时器*' -o -name 'timer*' | head -1)
+          if [ -z "$ARM_BINARY" ]; then
+            ARM_BINARY=$(find "/tmp/${APP_NAME}.app/Contents/MacOS" -type f | head -1)
+          fi
+
+          INTEL_BINARY=$(find "$INTEL_APP/Contents/MacOS" -type f | head -1)
+          INTEL_NAME=$(basename "$INTEL_BINARY")
+
+          echo "Lipo: $INTEL_NAME into universal..."
+          lipo "$ARM_BINARY" "$INTEL_BINARY" -output "/tmp/${APP_NAME}.app/Contents/MacOS/$INTEL_NAME" -create
+
+          echo "Creating DMG..."
+          hdiutil create "$TEMP_DMG" -size 500m -fs HFS+ -volname "$APP_NAME" -quiet
+
+          hdiutil attach "$TEMP_DMG" -mountpoint /tmp/dmg_mnt -quiet
+
+          cp -r "/tmp/${APP_NAME}.app" /tmp/dmg_mnt/
+
+          hdiutil detach /tmp/dmg_mnt -quiet
+          hdiutil convert "$TEMP_DMG" -format UDZO -o "$FINAL_DMG" -quiet
+
+          mkdir -p "$GITHUB_WORKSPACE/output"
+          mv "$FINAL_DMG" "$GITHUB_WORKSPACE/output/计时器_通用版_v1.2.8.dmg"
+
+          echo "Done: output/计时器_通用版_v1.2.8.dmg"
+
+      - name: Upload final DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: timer-universal-dmg
+          path: output/*.dmg

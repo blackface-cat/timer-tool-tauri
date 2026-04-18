@@ -1,0 +1,19 @@
+{
+  "name": "timer-tool-tauri",
+  "version": "1.0.0",
+  "description": "计时器工具",
+  "scripts": {
+    "build": "cd src-tauri && cargo build --release 2>&1",
+    "dev": "cd src-tauri && cargo build 2>&1",
+    "build:bundle": "cd src-tauri && cargo build --release && echo Build complete"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@tauri-apps/cli": "^3.3.2"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^3.3.2"
+  }
+}
