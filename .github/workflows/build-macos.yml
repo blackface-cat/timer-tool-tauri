@@ -1,6 +1,8 @@
 name: Build macOS (Intel + Apple Silicon)
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -16,25 +18,24 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: timer-tool-tauri/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install Rust (Intel target)
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source ~/.cargo/env
           rustup target add x86_64-apple-darwin
 
-      - name: Install dependencies
+      - name: Install dependencies and build
         run: |
-          cd timer-tool-tauri
           npm ci
-          # tauri build for intel only
           npx tauri build --target x86_64-apple-darwin
 
       - name: Upload Intel artifact
         uses: actions/upload-artifact@v4
         with:
           name: timer-intel
-          path: timer-tool-tauri/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
 
   # ── Apple Silicon (aarch64) on macOS 14 ──────────────────────
   build-arm:
@@ -48,25 +49,24 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: timer-tool-tauri/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install Rust (ARM target)
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source ~/.cargo/env
           rustup target add aarch64-apple-darwin
 
-      - name: Install dependencies
+      - name: Install dependencies and build
         run: |
-          cd timer-tool-tauri
           npm ci
-          # tauri build for arm64 only
           npx tauri build --target aarch64-apple-darwin
 
       - name: Upload ARM artifact
         uses: actions/upload-artifact@v4
         with:
           name: timer-arm
-          path: timer-tool-tauri/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
 
   # ── Package both into a Universal DMG ─────────────────────────
   package-universal:
@@ -79,15 +79,15 @@ jobs:
           path: artifacts
 
       - name: List files
-        run: ls -la artifacts/
+        run: ls -laR artifacts/
 
       - name: Build Universal DMG
         run: |
           set -e
           cd artifacts
 
-          INTEL_DMG=$(ls timer-intel/*.dmg | head -1)
-          ARM_DMG=$(ls timer-arm/*.dmg | head -1)
+          INTEL_DMG=$(find timer-intel -name "*.dmg" | head -1)
+          ARM_DMG=$(find timer-arm -name "*.dmg" | head -1)
 
           echo "Intel: $INTEL_DMG"
           echo "ARM:   $ARM_DMG"
@@ -109,11 +109,7 @@ jobs:
           cp -r "$ARM_APP" "/tmp/${APP_NAME}.app"
 
           # Lipo: embed x64 binary into the arm64 .app
-          ARM_BINARY=$(find "/tmp/${APP_NAME}.app" -name '计时器*' -o -name 'timer*' | head -1)
-          if [ -z "$ARM_BINARY" ]; then
-            ARM_BINARY=$(find "/tmp/${APP_NAME}.app/Contents/MacOS" -type f | head -1)
-          fi
-
+          ARM_BINARY=$(find "/tmp/${APP_NAME}.app/Contents/MacOS" -type f | head -1)
           INTEL_BINARY=$(find "$INTEL_APP/Contents/MacOS" -type f | head -1)
           INTEL_NAME=$(basename "$INTEL_BINARY")
 
@@ -122,11 +118,8 @@ jobs:
 
           echo "Creating DMG..."
           hdiutil create "$TEMP_DMG" -size 500m -fs HFS+ -volname "$APP_NAME" -quiet
-
           hdiutil attach "$TEMP_DMG" -mountpoint /tmp/dmg_mnt -quiet
-
           cp -r "/tmp/${APP_NAME}.app" /tmp/dmg_mnt/
-
           hdiutil detach /tmp/dmg_mnt -quiet
           hdiutil convert "$TEMP_DMG" -format UDZO -o "$FINAL_DMG" -quiet
 
