@@ -25,6 +25,7 @@ pub struct LapRecord {
 #[derive(Serialize, Deserialize)]
 pub struct RecordGroup {
     pub id: String,
+    pub name: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: f64,
     pub note: String,
