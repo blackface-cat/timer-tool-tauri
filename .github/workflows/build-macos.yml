@@ -1,0 +1,49 @@
+name: Build macOS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+      - name: Install dependencies
+        run: npm install
+      - name: Build
+        run: npm run tauri build -- --target x86_64-apple-darwin
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      - name: Upload Intel DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: timer-intel-dmg
+          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+
+  build-arm:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+      - name: Install dependencies
+        run: npm install
+      - name: Build
+        run: npm run tauri build -- --target aarch64-apple-darwin
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      - name: Upload ARM DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: timer-arm-dmg
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
